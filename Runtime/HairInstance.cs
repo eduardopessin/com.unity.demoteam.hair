@@ -1091,7 +1091,9 @@ namespace Unity.DemoTeam.Hair
 			// update mesh renderer
 			ref var meshRenderer = ref strandGroupInstance.sceneObjects.strandMeshRenderer;
 			{
-				meshRenderer.enabled = needRenderer;
+				bool rendererEnabled = needRenderer && !enableIndirect;
+				if (meshRenderer.enabled != rendererEnabled)
+					meshRenderer.enabled = rendererEnabled;
 				meshRenderer.sharedMaterial = materialInstance;
 				meshRenderer.shadowCastingMode = needRendererShadows ? ShadowCastingMode.Off : settingsRendering.rendererShadows;
 				meshRenderer.renderingLayerMask = (uint)layerMask;
@@ -1113,7 +1115,9 @@ namespace Unity.DemoTeam.Hair
 					}
 				}
 
-				meshRendererHDRP.enabled = needRenderer && (settingsRendering.rendererShadows != ShadowCastingMode.ShadowsOnly);
+				bool rendererEnabled = needRenderer && !enableIndirect && (settingsRendering.rendererShadows != ShadowCastingMode.ShadowsOnly);
+				if (meshRendererHDRP.enabled != rendererEnabled)
+					meshRendererHDRP.enabled = rendererEnabled;
 				meshRendererHDRP.rendererGroup = settingsRendering.rendererGroup;
 				meshRendererHDRP.enableHighQualityLineRendering = (settingsRendering.renderer == HairSim.SettingsRendering.Renderer.HDRPHighQualityLines);
 			}
@@ -1139,13 +1143,6 @@ namespace Unity.DemoTeam.Hair
 			{
 				if (enableIndirect)
 				{
-					meshRenderer.enabled = false;
-
-#if HAS_PACKAGE_UNITY_HDRP_15_0_2
-					if (meshRendererHDRP != null)
-						meshRendererHDRP.enabled = false;
-#endif
-
 #if !UNITY_2021_2_OR_NEWER
 					Graphics.DrawMeshInstancedIndirect(
 						mesh,
