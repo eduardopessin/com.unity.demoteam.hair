@@ -27,7 +27,9 @@ float SdCapsule(const float3 p, const float3 centerA, const float3 centerB, cons
 	const float3 pa = p - centerA;
 	const float3 ba = centerB - centerA;
 
-	const float h = saturate(dot(pa, ba) / dot(ba, ba));
+	const float baba = dot(ba, ba);
+	// A zero-length capsule is a sphere; do not clamp positive segment lengths.
+	const float h = (baba > 0.0) ? saturate(dot(pa, ba) / baba) : 0.0;
 	const float r = radius;
 
 	return (length(pa - ba * h) - r);
@@ -40,7 +42,8 @@ float4 SdgCapsule(const float3 p, const float3 centerA, const float3 centerB, co
 	const float3 pa = p - centerA;
 	const float3 ba = centerB - centerA;
 
-	const float h = saturate(dot(pa, ba) / dot(ba, ba));
+	const float baba = dot(ba, ba);
+	const float h = (baba > 0.0) ? saturate(dot(pa, ba) / baba) : 0.0;
 	const float r = radius;
 
 	const float3 v = pa - ba * h;

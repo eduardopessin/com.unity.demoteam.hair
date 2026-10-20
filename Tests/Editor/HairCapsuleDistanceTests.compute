@@ -1,0 +1,21 @@
+#pragma kernel EvaluateCapsule
+#pragma target 5.0
+
+#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
+#include "../../Runtime/HairSimComputeConfig.hlsl"
+#include "../../Runtime/HairSimComputeSolverBoundaries.hlsl"
+
+float4 _PointRadius;
+float4 _CenterA;
+float4 _CenterB;
+RWStructuredBuffer<float4> _Results;
+
+[numthreads(1, 1, 1)]
+void EvaluateCapsule(uint3 id : SV_DispatchThreadID)
+{
+	const float3 p = _PointRadius.xyz;
+	const float radius = _PointRadius.w;
+	_Results[0] = float4(SdCapsule(p, _CenterA.xyz, _CenterB.xyz, radius), SdSphere(p, _CenterA.xyz, radius), 0.0, 0.0);
+	_Results[1] = SdgCapsule(p, _CenterA.xyz, _CenterB.xyz, radius);
+	_Results[2] = SdgSphere(p, _CenterA.xyz, radius);
+}
