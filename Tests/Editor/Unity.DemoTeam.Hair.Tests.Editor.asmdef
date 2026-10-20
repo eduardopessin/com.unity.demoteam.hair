@@ -5,13 +5,16 @@
         "Unity.DemoTeam.Hair.Runtime",
         "Unity.DemoTeam.Hair.Editor",
         "UnityEngine.TestRunner",
-        "UnityEditor.TestRunner"
+        "UnityEditor.TestRunner",
+        "Unity.Burst",
+        "Unity.Collections",
+        "Unity.Mathematics"
     ],
     "includePlatforms": [
         "Editor"
     ],
     "excludePlatforms": [],
-    "allowUnsafeCode": false,
+    "allowUnsafeCode": true,
     "overrideReferences": true,
     "precompiledReferences": [
         "nunit.framework.dll"

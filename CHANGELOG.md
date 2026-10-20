@@ -5,6 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### Changed
+
+- Run boundary blend rotation extraction and contact-history affine interpolation synchronously with Burst, retaining the existing managed matrix inverse and product.
+
+### Added
+
+- Added deterministic Burst/managed boundary interpolation differential tests and an explicit paired microbenchmark for 8, 32, 103, and 256 contacts. The benchmark reports allocation and computation separately without a speed requirement.
+
+
 ## [0.19.0-preview.1] - 2025-02-10
 
 ### Added

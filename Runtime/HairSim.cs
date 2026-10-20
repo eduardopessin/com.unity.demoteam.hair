@@ -13,6 +13,8 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Profiling;
 using Unity.Mathematics;
+using Unity.Burst;
+using Unity.Jobs;
 
 namespace Unity.DemoTeam.Hair
 {
@@ -1497,6 +1499,54 @@ namespace Unity.DemoTeam.Hair
 			PushConstantBufferData(cmd, volumeData.buffers.VolumeCBufferEnvironment, volumeConstantsEnvironment);
 		}
 
+		[BurstCompile(FloatMode = FloatMode.Strict, FloatPrecision = FloatPrecision.High)]
+		struct BoundaryBlendRotationJob : IJobParallelFor
+		{
+			[ReadOnly] public NativeArray<Matrix4x4> matrices;
+			[ReadOnly] public NativeArray<int> remap;
+			[WriteOnly] public NativeArray<Quaternion> rotations;
+
+			public void Execute(int i)
+			{
+				var q = remap[i] >= 0
+					? (Quaternion)svd.svdRotation((float3x3)((float4x4)matrices[i]))
+					: Quaternion.identity;
+				rotations[i] = q;
+			}
+		}
+
+		[BurstCompile(FloatMode = FloatMode.Strict, FloatPrecision = FloatPrecision.High)]
+		struct BoundaryBlendHistoryJob : IJobParallelFor
+		{
+			[ReadOnly] public NativeArray<Matrix4x4> matrices;
+			[ReadOnly] public NativeArray<Quaternion> rotations;
+			[ReadOnly] public NativeArray<Matrix4x4> currentMatrices;
+			[WriteOnly] public NativeArray<Matrix4x4> previousMatrices;
+			public float previousFraction;
+
+			public void Execute(int i)
+			{
+				var M_t = AffineUtility.AffineInterpolate4x4((float4x4)matrices[i], ((quaternion)rotations[i]).value, previousFraction);
+				previousMatrices[i] = (Matrix4x4)AffineUtility.AffineMul4x4((float4x4)currentMatrices[i], M_t);
+			}
+		}
+
+		static void UpdateBoundaryHistory(NativeArray<Matrix4x4> matrices, NativeArray<Quaternion> rotations, NativeArray<Matrix4x4> currentMatrices, NativeArray<Matrix4x4> previousMatrices, int boundaryCount, int stepCount, float frameFracHi)
+		{
+			if (stepCount > 0)
+			{
+				// Match _BoundaryMatrix after the final substep in this frame.
+				new BoundaryBlendHistoryJob
+				{
+					matrices = matrices,
+					rotations = rotations,
+					currentMatrices = currentMatrices,
+					previousMatrices = previousMatrices,
+					previousFraction = 1.0f - frameFracHi,
+				}.Run(boundaryCount);
+			}
+		}
+
 		public static void PushVolumeEnvironment(CommandBuffer cmd, ref VolumeData volumeData, in SettingsEnvironment settingsEnvironment, int stepCount, float frameFracHi)
 		{
 			ref var volumeConstantsScene = ref volumeData.constantsEnvironment;
@@ -1506,11 +1556,11 @@ namespace Unity.DemoTeam.Hair
 			volumeConstantsScene._WorldGravity = settingsEnvironment.gravityRotation * (Physics.gravity * settingsEnvironment.gravityScale);
 
 			// update boundaries
-			using (var bufRemap = new NativeArray<int>(Conf.MAX_BOUNDARIES, Allocator.Temp, NativeArrayOptions.ClearMemory))
+			using (var bufRemap = new NativeArray<int>(Conf.MAX_BOUNDARIES, Allocator.TempJob, NativeArrayOptions.ClearMemory))
 			using (var bufHandle = new NativeArray<int>(Conf.MAX_BOUNDARIES, Allocator.Temp, NativeArrayOptions.ClearMemory))
-			using (var bufMatrix = new NativeArray<Matrix4x4>(Conf.MAX_BOUNDARIES, Allocator.Temp, NativeArrayOptions.ClearMemory))
-			using (var bufMatrixA = new NativeArray<Matrix4x4>(Conf.MAX_BOUNDARIES, Allocator.Temp, NativeArrayOptions.ClearMemory))
-			using (var bufMatrixQ = new NativeArray<Quaternion>(Conf.MAX_BOUNDARIES, Allocator.Temp, NativeArrayOptions.ClearMemory))
+			using (var bufMatrix = new NativeArray<Matrix4x4>(Conf.MAX_BOUNDARIES, Allocator.TempJob, NativeArrayOptions.ClearMemory))
+			using (var bufMatrixA = new NativeArray<Matrix4x4>(Conf.MAX_BOUNDARIES, Allocator.TempJob, NativeArrayOptions.ClearMemory))
+			using (var bufMatrixQ = new NativeArray<Quaternion>(Conf.MAX_BOUNDARIES, Allocator.TempJob, NativeArrayOptions.ClearMemory))
 			using (var bufShape = new NativeArray<HairBoundary.RuntimeShape.Data>(Conf.MAX_BOUNDARIES, Allocator.Temp, NativeArrayOptions.ClearMemory))
 			{
 				CreateCPUBuffer(ref volumeData.boundaryPrevHandle, Conf.MAX_BOUNDARIES, Allocator.Persistent, NativeArrayOptions.ClearMemory);
@@ -1522,7 +1572,6 @@ namespace Unity.DemoTeam.Hair
 					var ptrHandle = (int*)bufHandle.GetUnsafePtr();
 					var ptrMatrix = (Matrix4x4*)bufMatrix.GetUnsafePtr();
 					var ptrMatrixA = (Matrix4x4*)bufMatrixA.GetUnsafePtr();
-					var ptrMatrixQ = (Quaternion*)bufMatrixQ.GetUnsafePtr();
 					var ptrShape = (HairBoundary.RuntimeShape.Data*)bufShape.GetUnsafePtr();
 
 					// gather boundaries
@@ -1666,18 +1715,23 @@ namespace Unity.DemoTeam.Hair
 								var Mb = volumeData.boundaryPrevMatrix[j];
 
 								var M = Matrix4x4.Inverse(Ma) * Mb;
-								var q = (Quaternion)svd.svdRotation((float3x3)((float4x4)M));
 
 								ptrMatrixA[i] = M;
-								ptrMatrixQ[i] = q;
 							}
 							else
 							{
 								ptrMatrixA[i] = Matrix4x4.identity;
-								ptrMatrixQ[i] = Quaternion.identity;
 							}
 						}
 					}
+
+					// Keep matrix inversion/product managed; only the SVD runs in Burst.
+					new BoundaryBlendRotationJob
+					{
+						matrices = bufMatrixA,
+						remap = bufRemap,
+						rotations = bufMatrixQ,
+					}.Run(boundaryCount);
 
 					// update buffers
 					PushComputeBufferData(cmd, volumeData.buffers._BoundaryMatrixNext, bufMatrix);
@@ -1690,27 +1744,8 @@ namespace Unity.DemoTeam.Hair
 					if (stepCount > 0)
 					{
 						volumeData.boundaryPrevHandle.CopyFrom(bufHandle);
-#if false
-						volumeData.boundaryPrevMatrix.CopyFrom(bufMatrix);
-#else
-						// resolve boundaryPrevMatrix to match contents of _BoundaryMatrix after final substep in frame
-						{
-							var ptrMatrixPrev = (Matrix4x4*)volumeData.boundaryPrevMatrix.GetUnsafePtr();
-
-							for (int i = 0; i != boundaryCount; i++)
-							{
-								ref var Ma = ref ptrMatrix[i];
-								ref var M = ref ptrMatrixA[i];
-								ref var q = ref ptrMatrixQ[i];
-
-								var M_t = AffineUtility.AffineInterpolate4x4(M, ((quaternion)q).value, 1.0f - frameFracHi);
-								var Mb_t = AffineUtility.AffineMul4x4(Ma, M_t);
-
-								ptrMatrixPrev[i] = Mb_t;
-							}
-						}
-#endif
 					}
+					UpdateBoundaryHistory(bufMatrixA, bufMatrixQ, bufMatrix, volumeData.boundaryPrevMatrix, boundaryCount, stepCount, frameFracHi);
 
 					volumeData.boundaryCount = boundaryCount;
 					volumeData.boundaryCountDiscard = boundaryList.Count - boundaryCount;
