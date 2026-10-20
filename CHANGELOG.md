@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### Changed
+
+- Increased the complete simulation boundary capacity from 8 to 256. Boundary shape, transform and history buffers now reserve 256 entries; this is a capacity and memory change, not only a query optimization. Collider broadphase capture starts at 256 entries and retains a larger buffer when a saturated query must be repeated, so unrelated overlapping colliders do not silently hide boundaries within the supported range. The existing simulation limit still applies above 256 boundaries.
+- Fused nearest-boundary distance and friction index selection into one exhaustive traversal for all boundary types, retaining the highest original index on exact ties. Removed the separate selection traversal; distance-only queries share the same implementation. Primitive distances, the finite-difference normal formula, friction transforms, epsilon and distance sentinel remain unchanged. Coincident capsule endpoints retain the existing primitive's undefined behavior and are not repaired by this change.
+- Added Editor GPU differential tests for 15 scenarios and 69,030 points, including high boundary counts, count transitions, ties, interiors, transformed capsules, mixed shapes and extreme inputs. Independent exhaustive traversal is the numerical correctness oracle. A separate production interpolation test checks queries at substep fractions 0, 0.5 and 1, and a capture regression exercises 256 boundaries among 513 irrelevant colliders.
+
+
 ## [0.19.0-preview.1] - 2025-02-10
 
 ### Added

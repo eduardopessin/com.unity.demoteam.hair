@@ -1,0 +1,82 @@
+#pragma kernel Validate
+#pragma target 5.0
+#define F_SOLVE 1
+#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
+#include "Packages/com.unity.demoteam.hair/Runtime/HairSimComputeConfig.hlsl"
+#include "Packages/com.unity.demoteam.hair/Runtime/HairSimComputeSolverBoundaries.hlsl"
+
+StructuredBuffer<float3> _ValidationPoints;
+RWStructuredBuffer<float4> _ValidationResults;
+uint _ValidationPointCount;
+
+// Share the production primitives, not its fused traversal or selection
+// implementation. This deliberately does not validate primitive math.
+float ReferenceShape(float3 p, uint i)
+{
+	BoundaryShape shape = (BoundaryShape)0;
+	shape = GetBoundaryShape(i);
+	if (i < _BoundaryDelimDiscrete) return SdDiscrete(p, shape, GetBoundaryMatrixInv(i), _BoundarySDF);
+	if (i < _BoundaryDelimCapsule) return SdCapsule(p, shape);
+	if (i < _BoundaryDelimSphere) return SdSphere(p, shape);
+	if (i < _BoundaryDelimTorus) return SdTorus(p, shape);
+	return SdCube(p, shape, GetBoundaryMatrixInv(i));
+}
+
+float ReferenceDistance(float3 p, float upperBound)
+{
+	float d = upperBound;
+	[loop] for (uint i = 0; i < _BoundaryDelimCube; i++) d = min(d, ReferenceShape(p, i));
+	return d;
+}
+
+uint ReferenceSelect(float3 p, float d)
+{
+	uint selected = 0;
+	[loop] for (uint i = 0; i < _BoundaryDelimCube; i++)
+	{
+		if (d == ReferenceShape(p, i)) selected = i;
+	}
+	return selected;
+}
+
+float3 ReferenceOffsets(float3 p, float epsilon, float upperBound)
+{
+	float2 h = float2(epsilon, 0);
+	return float3(ReferenceDistance(p - h.xyy, upperBound),
+		ReferenceDistance(p - h.yxy, upperBound), ReferenceDistance(p - h.yyx, upperBound));
+}
+
+float3 ProductionOffsets(float3 p, float epsilon, float upperBound)
+{
+	float2 h = float2(epsilon, 0);
+	return float3(BoundaryDistance(p - h.xyy, upperBound),
+		BoundaryDistance(p - h.yxy, upperBound), BoundaryDistance(p - h.yyx, upperBound));
+}
+
+float3 ReferenceNormal(float3 p, float d)
+{
+	float3 diff = ReferenceOffsets(p, _BoundaryWorldEpsilon, 1e7) - d;
+	return diff * rsqrt(dot(diff, diff) + 1e-7);
+}
+
+[numthreads(64, 1, 1)]
+void Validate(uint i : SV_DispatchThreadID)
+{
+	if (i >= _ValidationPointCount) return;
+	float3 p = _ValidationPoints[i];
+	uint selected, boundedSelected;
+	float d = BoundaryDistance(p, 1e7, selected);
+	float reference = ReferenceDistance(p, 1e7);
+	// A clipping bound below many exterior distances also exercises the no-winner
+	// sentinel selection (zero), instead of assuming every query chooses a shape.
+	float bounded = BoundaryDistance(p, 0.125, boundedSelected);
+	float boundedReference = ReferenceDistance(p, 0.125);
+	_ValidationResults[8 * i] = float4(d, reference, selected, ReferenceSelect(p, reference));
+	_ValidationResults[8 * i + 1] = float4(ProductionOffsets(p, _BoundaryWorldEpsilon, 1e7), 0);
+	_ValidationResults[8 * i + 2] = float4(ReferenceOffsets(p, _BoundaryWorldEpsilon, 1e7), BoundaryDistance(p, 1e7));
+	_ValidationResults[8 * i + 3] = float4(BoundaryNormal(p, d), BoundaryDistance(p));
+	_ValidationResults[8 * i + 4] = float4(ReferenceNormal(p, reference), bounded);
+	_ValidationResults[8 * i + 5] = float4(boundedReference, boundedSelected, ReferenceSelect(p, boundedReference), BoundaryDistance(p, 0.125));
+	_ValidationResults[8 * i + 6] = float4(ProductionOffsets(p, _BoundaryWorldEpsilon, 0.125), 0);
+	_ValidationResults[8 * i + 7] = float4(ReferenceOffsets(p, _BoundaryWorldEpsilon, 0.125), 0);
+}

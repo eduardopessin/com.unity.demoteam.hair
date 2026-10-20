@@ -10,7 +10,7 @@ namespace Unity.DemoTeam.Hair
 			public const int MAX_FRUSTUMS = 32;
 			// N == max number of lod cameras
 
-			public const int MAX_BOUNDARIES = 8;
+			public const int MAX_BOUNDARIES = 256;
 			// N == max number of solid boundaries
 
 			public const int MAX_EMITTERS = 8;

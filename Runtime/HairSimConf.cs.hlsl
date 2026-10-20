@@ -8,7 +8,7 @@
 // Unity.DemoTeam.Hair.HairSim+Conf:  static fields
 //
 #define MAX_FRUSTUMS (32)
-#define MAX_BOUNDARIES (8)
+#define MAX_BOUNDARIES (256)
 #define MAX_EMITTERS (8)
 #define SECOND_ORDER_UPDATE (0)
 #define SPLAT_FRACTIONAL_BITS (12)

@@ -46,7 +46,7 @@ void SolveCollisionConstraint(
 	//              `
 	//             /
 	//           .`
-	//         ´
+	//         Â´
 
 	if (w > 0.0)
 	{
@@ -87,10 +87,10 @@ void SolveCollisionFrictionConstraint(
 
 	if (w > 0.0)
 	{
-		float depth = BoundaryDistance(p);
+		uint index;
+		float depth = BoundaryDistance(p, 1e+7, index);
 		if (depth < (_BoundaryWorldMargin + margin))
 		{
-			uint index = BoundarySelect(p, depth);
 			float3 normal = BoundaryNormal(p, depth);
 
 			depth -= (_BoundaryWorldMargin + margin);
@@ -238,13 +238,13 @@ void SolveTriangleBendingConstraint(
 	//
 	//                 p1
 	//                  o
-	//                ,´|`.
-	//              ,´  |  `.
-	//            ,´    | r  `.
-	//    .     ,´      |      `.     .
-	//    |   ,´        o C      `.   | r/2
-	//    | ,´                     `. |
-	// p0 o´-------------------------`o p2
+	//                ,Â´|`.
+	//              ,Â´  |  `.
+	//            ,Â´    | r  `.
+	//    .     ,Â´      |      `.     .
+	//    |   ,Â´        o C      `.   | r/2
+	//    | ,Â´                     `. |
+	// p0 oÂ´-------------------------`o p2
 
 	float3 c = (p0 + p1 + p2) / 3.0;
 	float3 r = p1 - c;
@@ -335,7 +335,7 @@ void SolveMaterialFrameBendTwistConstraint(
 	const float4 q0, const float4 q1,
 	inout float4 d0, inout float4 d1)
 {
-	// see: "Position and Orientation Based Cosserat Rods" by T. Kugelstadt and E. Schömer
+	// see: "Position and Orientation Based Cosserat Rods" by T. Kugelstadt and E. SchÃ¶mer
 	// https://www.cg.informatik.uni-mainz.de/files/2016/06/Position-and-Orientation-Based-Cosserat-Rods.pdf
 
 	float4 darboux = QMul(QInverse(q0), q1);
@@ -369,7 +369,7 @@ void SolveMaterialFrameStretchShearConstraint(
 	const float3 p0, const float3 p1, const float4 q,
 	inout float3 d0, inout float3 d1, inout float4 dq)
 {
-	// see: "Position and Orientation Based Cosserat Rods" by T. Kugelstadt and E. Schömer
+	// see: "Position and Orientation Based Cosserat Rods" by T. Kugelstadt and E. SchÃ¶mer
 	// https://www.cg.informatik.uni-mainz.de/files/2016/06/Position-and-Orientation-Based-Cosserat-Rods.pdf
 
 	const float3 e3 = float3(0, 1, 0);

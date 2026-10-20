@@ -17,9 +17,9 @@ namespace Unity.DemoTeam.Hair
 
 	public static class SpatialComponentFilter<TComponent, TData, TFn> where TComponent : MonoBehaviour where TData : struct where TFn : ISpatialComponentProxy<TComponent, TData>
 	{
-		const int MAX_OVERLAP_COUNT = 64;
+		const int INITIAL_OVERLAP_CAPACITY = 256;
 
-		static Collider[] s_managedColliders = new Collider[MAX_OVERLAP_COUNT];
+		static Collider[] s_managedColliders = new Collider[INITIAL_OVERLAP_CAPACITY];
 		static List<TComponent> s_managedComponents = new List<TComponent>();
 
 		static HashSet<int> s_gatherMask = new HashSet<int>();
@@ -86,6 +86,14 @@ namespace Unity.DemoTeam.Hair
 			{
 				var colliderBuffer = s_managedColliders;
 				var colliderCount = Physics.OverlapBoxNonAlloc(volumeBounds.center, volumeBounds.extents, colliderBuffer, Quaternion.identity, volumeLayer, QueryTriggerInteraction.Collide);
+				while (colliderCount == colliderBuffer.Length)
+				{
+					// Saturation may hide relevant boundaries among unrelated colliders.
+					// Retain the larger buffer and repeat until capture is complete.
+					s_managedColliders = new Collider[checked(colliderBuffer.Length * 2)];
+					colliderBuffer = s_managedColliders;
+					colliderCount = Physics.OverlapBoxNonAlloc(volumeBounds.center, volumeBounds.extents, colliderBuffer, Quaternion.identity, volumeLayer, QueryTriggerInteraction.Collide);
+				}
 
 				// filter bound / standalone
 				for (int i = 0; i != colliderCount; i++)

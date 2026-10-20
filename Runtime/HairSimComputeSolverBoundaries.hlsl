@@ -297,37 +297,58 @@ void PrepareBoundaryData(const uint threadIndex, const uint threadCount) { }
 #define BOUNDARIES_FOR(i, n) BOUNDARIES_LOOP for (j += n; i != j; i++)
 #endif
 
-float BoundaryDistance(const float3 p)
+void BoundaryMinimum(const float candidate, const uint index, inout float nearest, inout uint selected)
 {
-	float d = 1e+7;
+	// The flat scan visits original indices in ascending order, so replacing
+	// on equality preserves the original selection's highest-index tie break.
+	if (candidate <= nearest)
+		selected = index;
+	nearest = min(nearest, candidate);
+}
+
+float BoundaryDistance(const float3 p, const float initialUpperBound, out uint selected)
+{
+	float d = initialUpperBound;
+	selected = 0;
 
 	BOUNDARIES_FOR_VARS(i, 0)
 	BOUNDARIES_FOR(i, _BoundaryDelimDiscrete)
 	{
-		d = min(d, SdDiscrete(p, GetBoundaryShape(i), GetBoundaryMatrixInv(i), _BoundarySDF));
+		BoundaryMinimum(SdDiscrete(p, GetBoundaryShape(i), GetBoundaryMatrixInv(i), _BoundarySDF), i, d, selected);
 	}
 	BOUNDARIES_FOR(i, _BoundaryDelimCapsule)
 	{
-		d = min(d, SdCapsule(p, GetBoundaryShape(i)));
+		BoundaryMinimum(SdCapsule(p, GetBoundaryShape(i)), i, d, selected);
 	}
 	BOUNDARIES_FOR(i, _BoundaryDelimSphere)
 	{
-		d = min(d, SdSphere(p, GetBoundaryShape(i)));
+		BoundaryMinimum(SdSphere(p, GetBoundaryShape(i)), i, d, selected);
 	}
 	BOUNDARIES_FOR(i, _BoundaryDelimTorus)
 	{
-		d = min(d, SdTorus(p, GetBoundaryShape(i)));
+		BoundaryMinimum(SdTorus(p, GetBoundaryShape(i)), i, d, selected);
 	}
 	BOUNDARIES_FOR(i, _BoundaryDelimCube)
 	{
 #if BOUNDARIES_OPT_PACK_CUBE
-		d = min(d, SdCube(p, GetBoundaryShape(i)));
+		BoundaryMinimum(SdCube(p, GetBoundaryShape(i)), i, d, selected);
 #else
-		d = min(d, SdCube(p, GetBoundaryShape(i), GetBoundaryMatrixInv(i)));
+		BoundaryMinimum(SdCube(p, GetBoundaryShape(i), GetBoundaryMatrixInv(i)), i, d, selected);
 #endif
 	}
 
 	return d;
+}
+
+float BoundaryDistance(const float3 p, const float initialUpperBound)
+{
+	uint unused;
+	return BoundaryDistance(p, initialUpperBound, unused);
+}
+
+float BoundaryDistance(const float3 p)
+{
+	return BoundaryDistance(p, 1e+7);
 }
 
 float3 BoundaryDistanceDiscrete(const float3 p)
@@ -343,44 +364,6 @@ float3 BoundaryDistanceDiscrete(const float3 p)
 	return d;
 }
 
-uint BoundarySelect(const float3 p, const float d)
-{
-	uint k = 0;
-
-	BOUNDARIES_FOR_VARS(i, 0)
-	BOUNDARIES_FOR(i, _BoundaryDelimDiscrete)
-	{
-		if (d == SdDiscrete(p, GetBoundaryShape(i), GetBoundaryMatrixInv(i), _BoundarySDF))
-			k = i;
-	}
-	BOUNDARIES_FOR(i, _BoundaryDelimCapsule)
-	{
-		if (d == SdCapsule(p, GetBoundaryShape(i)))
-			k = i;
-	}
-	BOUNDARIES_FOR(i, _BoundaryDelimSphere)
-	{
-		if (d == SdSphere(p, GetBoundaryShape(i)))
-			k = i;
-	}
-	BOUNDARIES_FOR(i, _BoundaryDelimTorus)
-	{
-		if (d == SdTorus(p, GetBoundaryShape(i)))
-			k = i;
-	}
-	BOUNDARIES_FOR(i, _BoundaryDelimCube)
-	{
-#if BOUNDARIES_OPT_PACK_CUBE
-		if (d == SdCube(p, GetBoundaryShape(i)))
-			k = i;
-#else
-		if (d == SdCube(p, GetBoundaryShape(i), GetBoundaryMatrixInv(i)))
-			k = i;
-#endif
-	}
-
-	return k;
-}
 
 float4 BoundaryNormalAnalyticMin(const float4 sdgA, const float4 sdgB)
 {
